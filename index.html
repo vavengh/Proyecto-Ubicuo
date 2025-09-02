@@ -3,45 +3,128 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Lamp</title>
+    <title>Two Traffic Lights – Loop + Priority</title>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      body { font-family: sans-serif; }
+      h1 { text-align: center; margin-top: 20px; }
+      #ProtobjectPlusButton { width: 80px !important; }
+      #ProtobjectPlusButton:after { content: " Connect"; }
+    </style>
   </head>
   <body>
-
     <script src="https://app.protobject.com/framework/p.js"></script>
     <script src="config.js"></script>
-    
-    <h1 style="font-family:sans-serif; text-align:center; margin-top:20px">This is the lamp</h1>
-    <script>
-      // This file, index.html, defines a lamp.
-      // An instance of the lamp is created with the specified dimensions and position.
-      const lamp = new Protobject.Lamp({
-        width: "calc(100% - 160px)", // Lamp width
-        height: "calc(100% - 160px)", // Lamp height
-        top: "80px", // Position from the top
-        left: "80px", // Position from the left
-        zIndex: 5,
-        borderRadius: "20px"
-      });
 
-      // Event triggered when a message is received.
-      // If the received message is 'true', the lamp turns on with red light.
-      // If the message is 'false', the lamp turns off.
-      Protobject.Core.onReceived(function (message) {
-        if (message) {
-          lamp.setColor({ r: 0, g: 255, b: 0 }); // Green light (RGB: 0, 255, 0)
+    <h1>Semáforos A (izq) y B (der) — bucle + prioridad</h1>
+
+    <script>
+      // ===== Duraciones (ms) =====
+      const DUR_GREEN = 13000;  // 13 s
+      const DUR_YEL   = 2000;   // 2 s
+
+      // ===== Layout visual =====
+      const lampSize = 160;
+      const gap = 18;
+      const topStart = 90;
+      const horizontalGap = 200;
+
+      const center = `calc(50% - ${lampSize/2}px)`;
+      const leftCol  = `calc(${center} - ${horizontalGap/2}px)`;  // A
+      const rightCol = `calc(${center} + ${horizontalGap/2}px)`;  // B
+
+      // ===== Lámparas (A) =====
+      const redA = new Protobject.Lamp({ width: lampSize+"px", height: lampSize+"px", top: topStart+"px", left: leftCol, zIndex: 5, borderRadius: "50%" });
+      const yelA = new Protobject.Lamp({ width: lampSize+"px", height: lampSize+"px", top: (topStart + lampSize + gap)+"px", left: leftCol, zIndex: 5, borderRadius: "50%" });
+      const grnA = new Protobject.Lamp({ width: lampSize+"px", height: lampSize+"px", top: (topStart + 2*(lampSize + gap))+"px", left: leftCol, zIndex: 5, borderRadius: "50%" });
+
+      // ===== Lámparas (B) =====
+      const redB = new Protobject.Lamp({ width: lampSize+"px", height: lampSize+"px", top: topStart+"px", left: rightCol, zIndex: 5, borderRadius: "50%" });
+      const yelB = new Protobject.Lamp({ width: lampSize+"px", height: lampSize+"px", top: (topStart + lampSize + gap)+"px", left: rightCol, zIndex: 5, borderRadius: "50%" });
+      const grnB = new Protobject.Lamp({ width: lampSize+"px", height: lampSize+"px", top: (topStart + 2*(lampSize + gap))+"px", left: rightCol, zIndex: 5, borderRadius: "50%" });
+
+      // ===== Colores =====
+      const OFF = { r:0, g:0, b:0 };
+      const RED = { r:255, g:0,   b:0   };
+      const YEL = { r:255, g:165, b:0   };
+      const GRN = { r:0,   g:255, b:0   };
+
+      function setA(state){ // "red" | "yellow" | "green" | "off"
+        if (state === "red"){ redA.setColor(RED); yelA.setColor(OFF); grnA.setColor(OFF); }
+        else if (state === "yellow"){ redA.setColor(OFF); yelA.setColor(YEL); grnA.setColor(OFF); }
+        else if (state === "green"){ redA.setColor(OFF); yelA.setColor(OFF); grnA.setColor(GRN); }
+        else { redA.setColor(OFF); yelA.setColor(OFF); grnA.setColor(OFF); }
+      }
+      function setB(state){
+        if (state === "red"){ redB.setColor(RED); yelB.setColor(OFF); grnB.setColor(OFF); }
+        else if (state === "yellow"){ redB.setColor(OFF); yelB.setColor(YEL); grnB.setColor(OFF); }
+        else if (state === "green"){ redB.setColor(OFF); yelB.setColor(OFF); grnB.setColor(GRN); }
+        else { redB.setColor(OFF); yelB.setColor(OFF); grnB.setColor(OFF); }
+      }
+
+      const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+      // ===== Control de ciclo con "token" para cancelación =====
+      let cycleToken = 0; // al cambiar, interrumpimos el loop actual
+
+      async function runLoop(start = "A_green", tokenAtStart = ++cycleToken){
+        let state = start;
+        const isActive = () => tokenAtStart === cycleToken;
+
+        while (isActive()) {
+          if (state === "A_green") {
+            setA("green"); setB("red");
+            await sleep(DUR_GREEN); if (!isActive()) return;
+            setA("yellow");
+            await sleep(DUR_YEL);   if (!isActive()) return;
+            setA("red"); setB("green");
+            state = "B_green";
+          }
+          else if (state === "B_green") {
+            setB("green"); setA("red");
+            await sleep(DUR_GREEN); if (!isActive()) return;
+            setB("yellow");
+            await sleep(DUR_YEL);   if (!isActive()) return;
+            setB("red"); setA("green");
+            state = "A_green";
+          }
+        }
+      }
+
+      // ===== Prioridad (renovar ciclo) =====
+      // Regla: si piden prioridad para X, forzamos al otro a amarillo (2s) → rojo,
+      // y X pasa INMEDIATAMENTE a verde; luego retomamos el bucle normal desde X_green.
+      async function requestPriority(target){
+        // Cancelar cualquier espera del loop actual
+        ++cycleToken;
+        const other = target === "A" ? "B" : "A";
+
+        if (other === "B") {
+          setB("yellow");
+          await sleep(DUR_YEL);
+          setB("red");
+          setA("green");
+          runLoop("A_green"); // reanudar desde A verde
         } else {
-          lamp.setColor({ r: 0, g: 0, b: 0 }); // Off (RGB: 0, 0, 0)
+          setA("yellow");
+          await sleep(DUR_YEL);
+          setA("red");
+          setB("green");
+          runLoop("B_green"); // reanudar desde B verde
+        }
+      }
+
+      // ===== Mensajes desde button.html =====
+      Protobject.Core.onReceived((message) => {
+        if (message && typeof message === "object" && message.action === "renew") {
+          const t = (message.target || "").toUpperCase();
+          if (t === "A" || t === "B") requestPriority(t);
         }
       });
+
+      // Arranque por defecto: A en verde, B en rojo
+      setA("green"); setB("red");
+      runLoop("A_green");
     </script>
   </body>
-  <style>
-    #ProtobjectPlusButton {
-      width: 80px !important;
-    }
-
-    #ProtobjectPlusButton:after {
-      content: " Connect";
-    }
-  </style>
 </html>

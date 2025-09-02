@@ -1,13 +1,13 @@
-Protobject.setProduction(true)
-Protobject.initialize(
-[
+Protobject.setProduction(true);
+
+Protobject.initialize([
   { 
-    name: "Button",
+    name: "Buttons",
     page: "button.html",
     debug: "local",
   },
   { 
-    name: "Lamp",
+    name: "TrafficLights",
     page: "index.html",
     main: true,
     debug: "master",
